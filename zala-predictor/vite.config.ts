@@ -5,4 +5,5 @@ export default defineConfig({
   plugins: [react()],
   worker: { format: 'es' },
   build: { target: 'es2020' },
+  base: '/',
 });
