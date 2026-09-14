@@ -9,6 +9,7 @@ import * as db from '../lib/db';
 import { PLANS, formatTsh, planById } from '../lib/plans';
 import { CardIcon, CheckIcon, CopyIcon, PredictIcon } from '../components/svg/icons';
 import type { Language, Payment, PlanId, Profile, Theme } from '../lib/types';
+import { useAsyncList } from '../hooks/useAsyncList';
 
 export function MyAccountPage() {
   const { t, i18n } = useTranslation(['settings', 'common', 'predict', 'auth', 'member']);
@@ -29,7 +30,7 @@ export function MyAccountPage() {
   const dateFmt = new Intl.DateTimeFormat(i18n.language, { day: '2-digit', month: 'short', year: 'numeric' });
   const expiryLabel = user?.member_expiry != null ? dateFmt.format(user.member_expiry) : '--';
 
-  const payments = useMemo<Payment[]>(() => (user ? db.listPaymentsForUser(user.id) : []), [user]);
+  const payments = useAsyncList<Payment>(() => (user ? db.listPaymentsForUser(user.id) : Promise.resolve([])), [user]);
 
   const progress = (() => {
     const start = user?.member_start;

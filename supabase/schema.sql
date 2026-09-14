@@ -3,9 +3,9 @@
 -- Run this ONCE in the Supabase SQL Editor (Dashboard -> SQL Editor -> New query).
 -- It is idempotent: safe to re-run.
 --
--- IMPORTANT: In Supabase -> Authentication -> Providers -> Email, turn OFF
--- "Confirm email" so that signUp returns a session immediately (this app grants
--- access after admin payment approval, not after email confirmation).
+-- Legacy Supabase application-data schema. Account authentication and verified
+-- signup are handled by Netlify Identity; do not use this file to provision
+-- users or grant administrator access.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -125,8 +125,7 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- 4. Auto-create a profile row when a new auth user signs up.
---    The bootstrap admin email is promoted automatically and granted full access.
+-- 4. Legacy profile trigger. It never grants administrator access.
 -- ---------------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
@@ -134,11 +133,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  is_bootstrap_admin boolean;
 begin
-  is_bootstrap_admin := lower(new.email) = 'respect.chf@gmail.com';
-
   insert into public.profiles (
     id, username, full_name, email, phone, language, betting_company,
     is_admin, status, plan, member_start, member_expiry, user_code
@@ -151,12 +146,12 @@ begin
     coalesce(new.raw_user_meta_data ->> 'phone', ''),
     coalesce(new.raw_user_meta_data ->> 'language', 'en'),
     coalesce(new.raw_user_meta_data ->> 'betting_company', ''),
-    is_bootstrap_admin,
-    case when is_bootstrap_admin then 'active' else 'pending' end,
-    case when is_bootstrap_admin then 'monthly' else null end,
-    case when is_bootstrap_admin then now() else null end,
-    case when is_bootstrap_admin then now() + interval '3650 days' else null end,
-    case when is_bootstrap_admin then 'ZALA-0001' else null end
+    false,
+    'pending',
+    null,
+    null,
+    null,
+    null
   )
   on conflict (id) do nothing;
 
