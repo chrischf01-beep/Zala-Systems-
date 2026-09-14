@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --zala-bg: #05070f;
+  --zala-surface: #0c1220;
+  --zala-surface-2: #131a2e;
+  --zala-primary: #00e5c0;
+  --zala-primary-dark: #00a88f;
+  --zala-secondary: #ff3d7f;
+  --zala-tertiary: #ffb020;
+  --zala-success: #3dff8f;
+  --zala-danger: #ff5470;
+  --zala-text: #eaf2ff;
+  --zala-text-muted: #7a8aa8;
+  --zala-border: #1e2a44;
+  --zala-gradient-hero: linear-gradient(135deg, #00e5c0 0%, #ff3d7f 100%);
+  --zala-gradient-panel: linear-gradient(180deg, #0c1220 0%, #05070f 100%);
+  --zala-gradient-glow: radial-gradient(circle, rgba(0, 229, 192, 0.35) 0%, transparent 70%);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--zala-bg);
+  color: var(--zala-text);
+  font-family: 'Inter', 'IBM Plex Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--zala-primary);
+  color: #000;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--zala-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--zala-border);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--zala-primary-dark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--zala-primary);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .glass {
+    background: rgba(12, 18, 32, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--zala-border);
+    border-radius: 16px;
+  }
+  .glass-strong {
+    background: rgba(12, 18, 32, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--zala-border);
+    border-radius: 16px;
+  }
+  .glow {
+    box-shadow: 0 0 24px rgba(0, 229, 192, 0.35);
+  }
+  .text-gradient {
+    background: var(--zala-gradient-hero);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+  }
+  .skip-link:focus {
+    left: 12px;
+    top: 12px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--zala-primary);
+    color: #000;
+    font-weight: 600;
+  }
+}
+
+/* Light theme */
+.theme-light {
+  --zala-bg: #eef2fb;
+  --zala-surface: #ffffff;
+  --zala-surface-2: #f4f7ff;
+  --zala-text: #0c1220;
+  --zala-text-muted: #55627e;
+  --zala-border: #d7e0f2;
+}
+.theme-light .glass {
+  background: rgba(255, 255, 255, 0.6);
+}
+.theme-light .glass-strong {
+  background: rgba(255, 255, 255, 0.78);
+}
+.theme-light body {
+  color: var(--zala-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
