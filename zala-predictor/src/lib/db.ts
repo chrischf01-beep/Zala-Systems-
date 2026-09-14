@@ -231,12 +231,36 @@ export function hasAccess(u: User): boolean {
 // ---- Auth ----
 
 async function fetchProfile(id: string): Promise<User | null> {
-  const response = await fetch('/api/profile', { credentials: 'same-origin' });
-  if (response.status === 401 || response.status === 404) return null;
-  if (!response.ok) throw new AuthError('no_profile');
-  const data = await response.json() as ProfileRow;
-  if (data.id !== id) return null;
-  return toPublicUser(data);
+  try {
+    const response = await fetch('/api/profile', { credentials: 'same-origin' });
+    if (response.ok) {
+      const data = await response.json() as ProfileRow;
+      if (data.id === id) return toPublicUser(data);
+    }
+  } catch {
+    // Identity metadata keeps authentication usable while profile persistence initializes.
+  }
+
+  const identityUser = await getIdentityUser();
+  if (!identityUser || identityUser.id !== id || !identityUser.email) return null;
+  const metadata = identityUser.userMetadata ?? {};
+  return {
+    id,
+    email: identityUser.email,
+    username: String(metadata.username ?? identityUser.email.split('@')[0]),
+    full_name: String(metadata.full_name ?? identityUser.name ?? ''),
+    language: metadata.language === 'sw' ? 'sw' : 'en',
+    profile: ['aggressive', 'conservative'].includes(String(metadata.profile)) ? metadata.profile as Profile : 'balanced',
+    created_at: identityUser.createdAt ? new Date(identityUser.createdAt).getTime() : Date.now(),
+    phone: String(metadata.phone ?? ''),
+    user_code: null,
+    is_admin: (identityUser.roles ?? []).includes('admin'),
+    status: 'pending',
+    plan: null,
+    member_start: null,
+    member_expiry: null,
+    betting_company: String(metadata.betting_company ?? ''),
+  };
 }
 
 export async function signIn(email: string, password: string): Promise<User> {
@@ -265,9 +289,16 @@ export interface SignUpInput {
 
 export async function signUp(input: SignUpInput): Promise<User | null> {
   const username = input.username.trim();
-  const availabilityResponse = await fetch(`/api/username-available?username=${encodeURIComponent(username)}`);
-  const availability = availabilityResponse.ok ? await availabilityResponse.json() as { available: boolean } : null;
-  if (!availability?.available) throw new AuthError('username_taken');
+  try {
+    const availabilityResponse = await fetch(`/api/username-available?username=${encodeURIComponent(username)}`);
+    if (availabilityResponse.ok) {
+      const availability = await availabilityResponse.json() as { available: boolean };
+      if (!availability.available) throw new AuthError('username_taken');
+    }
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    // Identity still enforces unique emails if the optional username check is unavailable.
+  }
   let identityUser;
   try {
     identityUser = await signup(input.email.trim().toLowerCase(), input.password, {
