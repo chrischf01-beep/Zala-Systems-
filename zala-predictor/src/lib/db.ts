@@ -1,4 +1,12 @@
 import { supabase, SCREENSHOT_BUCKET } from './supabase';
+import {
+  getUser as getIdentityUser,
+  login,
+  logout,
+  requestPasswordRecovery,
+  signup,
+  AuthError as IdentityAuthError,
+} from '@netlify/identity';
 import type {
   ActivityLog,
   Broadcast,
@@ -223,19 +231,23 @@ export function hasAccess(u: User): boolean {
 // ---- Auth ----
 
 async function fetchProfile(id: string): Promise<User | null> {
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
-  if (error) throw new AuthError(error.message);
-  return data ? toPublicUser(data as ProfileRow) : null;
+  const response = await fetch('/api/profile', { credentials: 'same-origin' });
+  if (response.status === 401 || response.status === 404) return null;
+  if (!response.ok) throw new AuthError('no_profile');
+  const data = await response.json() as ProfileRow;
+  if (data.id !== id) return null;
+  return toPublicUser(data);
 }
 
 export async function signIn(email: string, password: string): Promise<User> {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.trim().toLowerCase(),
-    password,
-  });
-  if (error) throw new AuthError('invalid_credentials');
-  if (!data.user) throw new AuthError('invalid_credentials');
-  const profile = await fetchProfile(data.user.id);
+  let identityUser;
+  try {
+    identityUser = await login(email.trim().toLowerCase(), password);
+  } catch (error) {
+    if (error instanceof IdentityAuthError) throw new AuthError(error.status === 401 ? 'invalid_credentials' : error.message);
+    throw error;
+  }
+  const profile = await fetchProfile(identityUser.id);
   if (!profile) throw new AuthError('no_profile');
   return profile;
 }
@@ -246,56 +258,46 @@ export interface SignUpInput {
   full_name: string;
   password: string;
   language: Language;
+  profile?: Profile;
   phone?: string;
   betting_company?: string;
 }
 
-export async function signUp(input: SignUpInput): Promise<User> {
+export async function signUp(input: SignUpInput): Promise<User | null> {
   const username = input.username.trim();
-  const { data: available } = await supabase.rpc('username_available', { p_username: username });
-  if (available === false) throw new AuthError('username_taken');
-
-  const { data, error } = await supabase.auth.signUp({
-    email: input.email.trim().toLowerCase(),
-    password: input.password,
-    options: {
-      data: {
-        username,
-        full_name: input.full_name.trim(),
-        phone: (input.phone ?? '').trim(),
-        language: input.language,
-        betting_company: (input.betting_company ?? '').trim(),
-      },
-    },
-  });
-  if (error) {
-    const msg = error.message.toLowerCase();
+  const availabilityResponse = await fetch(`/api/username-available?username=${encodeURIComponent(username)}`);
+  const availability = availabilityResponse.ok ? await availabilityResponse.json() as { available: boolean } : null;
+  if (!availability?.available) throw new AuthError('username_taken');
+  let identityUser;
+  try {
+    identityUser = await signup(input.email.trim().toLowerCase(), input.password, {
+      username,
+      full_name: input.full_name.trim(),
+      phone: (input.phone ?? '').trim(),
+      language: input.language,
+      profile: input.profile ?? 'balanced',
+      betting_company: (input.betting_company ?? '').trim(),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message.toLowerCase() : '';
     if (msg.includes('already') || msg.includes('registered')) throw new AuthError('email_taken');
-    throw new AuthError(error.message);
+    throw new AuthError(error instanceof Error ? error.message : 'invalid_credentials');
   }
-  if (!data.session || !data.user) {
-    // Email confirmation is enabled in Supabase; no session yet.
-    throw new AuthError('email_confirmation_required');
-  }
-  const profile = await fetchProfile(data.user.id);
-  if (!profile) throw new AuthError('no_profile');
-  await addLog({ action: 'user.registered', details: `New account registered (${profile.email})`, target: profile.email });
-  return profile;
+  if (!identityUser.confirmedAt) return null;
+  return fetchProfile(identityUser.id);
 }
 
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+  await logout();
 }
 
 export async function resetPassword(email: string): Promise<void> {
-  const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/login` : undefined;
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo });
-  if (error) throw new AuthError(error.message);
+  await requestPasswordRecovery(email.trim().toLowerCase());
 }
 
 export async function getSessionUser(): Promise<User | null> {
-  const { data } = await supabase.auth.getSession();
-  const id = data.session?.user?.id;
+  const identityUser = await getIdentityUser();
+  const id = identityUser?.id;
   if (!id) return null;
   try {
     return await fetchProfile(id);
@@ -339,16 +341,18 @@ export async function findUserById(id: string): Promise<User | null> {
 
 export async function updateUser(id: string, patch: Partial<User>): Promise<User | null> {
   const body = profilePatch(patch);
-  if (Object.keys(body).length === 0) return fetchProfile(id);
-  const { data, error } = await supabase.from('profiles').update(body).eq('id', id).select('*').maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toPublicUser(data as ProfileRow) : null;
+  const response = await fetch('/api/profile', {
+    method: 'PATCH', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error('Unable to update profile');
+  return toPublicUser(await response.json() as ProfileRow);
 }
 
 export async function deleteUser(id: string): Promise<void> {
-  const { error } = await supabase.rpc('delete_profile', { p_id: id });
-  if (error) throw new Error(error.message);
-  await addLog({ action: 'user.deleted', details: 'Account deleted', target: id });
+  const identityUser = await getIdentityUser();
+  if (identityUser?.id !== id) throw new Error('Unauthorized');
+  const response = await fetch('/api/profile', { method: 'DELETE', credentials: 'same-origin' });
+  if (!response.ok) throw new Error('Unable to delete account');
 }
 
 // ---- Payments ----

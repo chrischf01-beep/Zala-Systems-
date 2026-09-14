@@ -57,8 +57,8 @@ export function Predict() {
     toast(t('predict:generated'), 'success');
   };
 
-  const onSave = () => {
-    const rec = save();
+  const onSave = async () => {
+    const rec = await save();
     if (rec) toast(t('predict:saved'), 'success');
   };
 

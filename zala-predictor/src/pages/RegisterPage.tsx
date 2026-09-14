@@ -75,13 +75,20 @@ export function RegisterPage() {
         full_name: name,
         password,
         language,
+        profile,
         phone,
         betting_company: bettingCompany,
       });
       setSettings.setProfile(profile);
       newSession();
-      toast(t('auth:signed_up'), 'success');
-      navigate('/membership', { state: { plan } });
+      const createdUser = useAuthStore.getState().user;
+      if (createdUser) {
+        toast(t('auth:signed_up'), 'success');
+        navigate('/membership', { state: { plan } });
+      } else {
+        toast('Account created. Check your email to verify it before signing in.', 'success');
+        navigate('/login', { state: { verificationSent: true } });
+      }
     } catch (err) {
       const code = err instanceof AuthError ? err.message : 'invalid_credentials';
       setErrors({ form: t(`auth:errors.${code}`, { defaultValue: t('auth:errors.invalid_credentials') }) });

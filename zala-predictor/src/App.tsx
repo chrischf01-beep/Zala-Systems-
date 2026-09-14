@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { handleAuthCallback } from '@netlify/identity';
 import { useTranslation } from 'react-i18next';
 import { ToastHost } from './components/ToastHost';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -18,6 +19,7 @@ const MembershipPage = lazy(() => import('./pages/MembershipPage'));
 const MyAccountPage = lazy(() => import('./pages/MyAccountPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const FinishAuthPage = lazy(() => import('./pages/FinishAuthPage'));
 
 function PageFallback() {
   return (
@@ -40,6 +42,28 @@ function RootRedirect() {
   return <Navigate to={user ? '/dashboard' : '/login'} replace />;
 }
 
+function IdentityCallbackHandler() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    void handleAuthCallback()
+      .then(async (result) => {
+        if (!result) return;
+        if (result.type === 'invite' && result.token) {
+          navigate('/auth/finish', { replace: true, state: { mode: 'invite', token: result.token } });
+          return;
+        }
+        if (result.type === 'recovery') {
+          navigate('/auth/finish', { replace: true, state: { mode: 'recovery' } });
+          return;
+        }
+        await useAuthStore.getState().hydrate();
+        navigate('/dashboard', { replace: true });
+      })
+      .catch(() => navigate('/login', { replace: true, state: { authError: true } }));
+  }, [navigate]);
+  return null;
+}
+
 export default function App() {
   const { t } = useTranslation('common');
   return (
@@ -48,12 +72,14 @@ export default function App() {
         {t('skip_to_content')}
       </a>
       <ScrollToTop />
+      <IdentityCallbackHandler />
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/reset" element={<Reset />} />
+          <Route path="/auth/finish" element={<FinishAuthPage />} />
           <Route
             path="/dashboard"
             element={

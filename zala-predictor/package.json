@@ -9,6 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.0",
+    "@netlify/database": "^2.0.1",
+    "@netlify/functions": "^6.0.0",
+    "@netlify/identity": "^2.0.0",
     "@supabase/supabase-js": "^2.116.0",
     "i18next": "^23.15.1",
     "i18next-browser-languagedetector": "^8.0.0",

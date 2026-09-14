@@ -11,6 +11,7 @@ import * as db from '../lib/db';
 import { toCsv, downloadCsv } from '../lib/csv';
 import { PLANS, formatTsh } from '../lib/plans';
 import type { Broadcast, MembershipStatus, NotificationType, Payment, PlanId, User } from '../lib/types';
+import { useAsyncList } from '../hooks/useAsyncList';
 
 type TabId = 'users' | 'payments' | 'analytics' | 'reports' | 'notifications' | 'logs' | 'settings' | 'backup';
 
@@ -110,8 +111,8 @@ function UsersSection() {
   const [selected, setSelected] = useState<User | null>(null);
   const reload = () => setVersion((v) => v + 1);
 
-  const users = useMemo(() => db.listUsers(), [version]);
-  const payments = useMemo(() => db.listPayments(), [version]);
+  const users = useAsyncList(() => db.listUsers(), [version]);
+  const payments = useAsyncList(() => db.listPayments(), [version]);
 
   const filtered = users.filter((u) => {
     const q = query.trim().toLowerCase();
@@ -226,7 +227,8 @@ function ManageUserModal({ user, onClose, onChanged }: { user: User; onClose: ()
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
 
-  const payments = useMemo(() => db.listPaymentsForUser(user.id).filter((p) => p.status === 'pending'), [version, user.id]);
+  const allPayments = useAsyncList(() => db.listPaymentsForUser(user.id), [version, user.id]);
+  const payments = allPayments.filter((p) => p.status === 'pending');
   const refresh = () => {
     setVersion((v) => v + 1);
     onChanged();
@@ -384,8 +386,8 @@ function PaymentsSection() {
   const [reasonError, setReasonError] = useState('');
   const reload = () => setVersion((v) => v + 1);
 
-  const payments = useMemo(() => db.listPayments(), [version]);
-  const users = useMemo(() => db.listUsers(), [version]);
+  const payments = useAsyncList(() => db.listPayments(), [version]);
+  const users = useAsyncList(() => db.listUsers(), [version]);
   const nameOf = (id: string) => users.find((u) => u.id === id)?.full_name ?? id;
 
   const approved = payments.filter((p) => p.status === 'approved');
@@ -535,8 +537,9 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent?: 
 
 function AnalyticsSection() {
   const { t } = useTranslation(['admin', 'member', 'common']);
-  const users = useMemo(() => db.listUsers().filter((u) => !u.is_admin), []);
-  const payments = useMemo(() => db.listPayments(), []);
+  const allUsers = useAsyncList(() => db.listUsers(), []);
+  const users = allUsers.filter((u) => !u.is_admin);
+  const payments = useAsyncList(() => db.listPayments(), []);
 
   const now = Date.now();
   const startToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
@@ -644,12 +647,12 @@ function ReportsSection() {
   const [rows, setRows] = useState<Record<string, string | number>[]>([]);
   const [generated, setGenerated] = useState(false);
 
-  const generate = () => {
+  const generate = async () => {
     const start = from ? new Date(from).getTime() : 0;
     const end = to ? new Date(to).getTime() + DAY : Date.now() + DAY;
     if (type === 'users') {
       setRows(
-        db.listUsers()
+        (await db.listUsers())
           .filter((u) => u.created_at >= start && u.created_at < end)
           .map((u) => ({
             name: u.full_name, email: u.email, phone: u.phone, user_id: u.user_code ?? '',
@@ -659,7 +662,7 @@ function ReportsSection() {
       );
     } else if (type === 'payments') {
       setRows(
-        db.listPayments()
+        (await db.listPayments())
           .filter((p) => p.created_at >= start && p.created_at < end)
           .map((p) => ({
             plan: p.plan, amount: p.amount, method: p.method, reference: p.reference,
@@ -668,7 +671,7 @@ function ReportsSection() {
       );
     } else {
       setRows(
-        db.listPayments()
+        (await db.listPayments())
           .filter((p) => p.status === 'approved' && (p.decided_at ?? 0) >= start && (p.decided_at ?? 0) < end)
           .map((p) => ({
             plan: p.plan, amount: p.amount, method: p.method,
@@ -755,8 +758,9 @@ function NotificationsSection() {
   const [body, setBody] = useState('');
   const [errors, setErrors] = useState<{ subject?: string; body?: string }>({});
 
-  const users = useMemo(() => db.listUsers().filter((u) => !u.is_admin), [version]);
-  const notes = useMemo(() => db.listNotifications(), [version]);
+  const allUsers = useAsyncList(() => db.listUsers(), [version]);
+  const users = allUsers.filter((u) => !u.is_admin);
+  const notes = useAsyncList(() => db.listNotifications(), [version]);
 
   const send = () => {
     const next: { subject?: string; body?: string } = {};
@@ -847,7 +851,7 @@ function NotificationsSection() {
 function LogsSection() {
   const { t } = useTranslation(['admin', 'common']);
   const [version, setVersion] = useState(0);
-  const logs = useMemo(() => db.listLogs(), [version]);
+  const logs = useAsyncList(() => db.listLogs(), [version]);
   const dateFmt = new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
@@ -960,8 +964,8 @@ function ToggleRow({ label, hint, checked, onChange }: { label: string; hint?: s
 
 function BackupSection() {
   const { t } = useTranslation(['admin', 'common']);
-  const download = () => {
-    const snapshot = db.exportDatabase();
+  const download = async () => {
+    const snapshot = await db.exportDatabase();
     downloadJson(`zala-backup-${new Date().toISOString().slice(0, 10)}.json`, snapshot);
     toast(t('admin:backup.downloaded'), 'success');
   };

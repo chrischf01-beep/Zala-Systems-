@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthShell } from '../components/AuthShell';
 import { Button, Card, Input } from '../components/ui';
@@ -14,6 +14,7 @@ const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function LoginPage() {
   const { t } = useTranslation('auth');
   const navigate = useNavigate();
+  const location = useLocation();
   const signIn = useAuthStore((s) => s.signIn);
   const loading = useAuthStore((s) => s.loading);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
@@ -55,6 +56,17 @@ export function LoginPage() {
         </span>
         <h1 className="font-heading text-2xl font-bold">{t('welcome_back')}</h1>
         <p className="mt-1 text-sm text-muted">{t('sign_in_subtitle')}</p>
+
+        {(location.state as { verificationSent?: boolean; authError?: boolean } | null)?.verificationSent && (
+          <p role="status" className="mt-4 rounded-lg border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+            Check your inbox and verify your email before signing in.
+          </p>
+        )}
+        {(location.state as { verificationSent?: boolean; authError?: boolean } | null)?.authError && (
+          <p role="alert" className="mt-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+            That account link is invalid or expired. Request a new link and try again.
+          </p>
+        )}
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4 text-left" noValidate>
           {errors.form && (
