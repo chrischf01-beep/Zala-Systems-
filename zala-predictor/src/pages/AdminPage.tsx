@@ -7,10 +7,11 @@ import { ExportIcon, ShieldIcon, TrashIcon } from '../components/svg/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useSiteStore } from '../stores/siteStore';
 import { toast } from '../stores/toastStore';
+import { useAsync } from '../hooks/useAsync';
 import * as db from '../lib/db';
 import { toCsv, downloadCsv } from '../lib/csv';
 import { PLANS, formatTsh } from '../lib/plans';
-import type { Broadcast, MembershipStatus, NotificationType, Payment, PlanId, User } from '../lib/types';
+import type { ActivityLog, Broadcast, MembershipStatus, NotificationType, Payment, PlanId, User } from '../lib/types';
 
 type TabId = 'users' | 'payments' | 'analytics' | 'reports' | 'notifications' | 'logs' | 'settings' | 'backup';
 
@@ -110,8 +111,8 @@ function UsersSection() {
   const [selected, setSelected] = useState<User | null>(null);
   const reload = () => setVersion((v) => v + 1);
 
-  const users = useMemo(() => db.listUsers(), [version]);
-  const payments = useMemo(() => db.listPayments(), [version]);
+  const users = useAsync(() => db.listUsers(), [version], [] as User[]);
+  const payments = useAsync(() => db.listPayments(), [version], [] as Payment[]);
 
   const filtered = users.filter((u) => {
     const q = query.trim().toLowerCase();
@@ -226,54 +227,58 @@ function ManageUserModal({ user, onClose, onChanged }: { user: User; onClose: ()
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
 
-  const payments = useMemo(() => db.listPaymentsForUser(user.id).filter((p) => p.status === 'pending'), [version, user.id]);
+  const payments = useAsync(
+    () => db.listPaymentsForUser(user.id).then((list) => list.filter((p) => p.status === 'pending')),
+    [version, user.id],
+    [] as Payment[]
+  );
   const refresh = () => {
     setVersion((v) => v + 1);
     onChanged();
   };
 
-  const approve = (id: string) => {
-    db.approvePayment(id);
+  const approve = async (id: string) => {
+    await db.approvePayment(id);
     toast(t('admin:users.approved'), 'success');
     refresh();
   };
-  const doReject = () => {
+  const doReject = async () => {
     if (!reason.trim()) {
       setReasonError(t('admin:users.reject_reason_required'));
       return;
     }
-    if (rejectId) db.rejectPayment(rejectId, reason);
+    if (rejectId) await db.rejectPayment(rejectId, reason);
     setRejectId(null);
     setReason('');
     setReasonError('');
     toast(t('admin:users.rejected'), 'info');
     refresh();
   };
-  const extend = () => {
+  const extend = async () => {
     const d = Number(extendDays);
     if (!Number.isFinite(d) || d <= 0) return;
-    db.extendMembership(user.id, d);
+    await db.extendMembership(user.id, d);
     toast(t('admin:users.extended'), 'success');
     refresh();
   };
-  const changeExpiry = () => {
+  const changeExpiry = async () => {
     if (!expiryDate) return;
-    db.setExpiry(user.id, new Date(expiryDate).getTime());
+    await db.setExpiry(user.id, new Date(expiryDate).getTime());
     toast(t('admin:users.expiry_set'), 'success');
     refresh();
   };
-  const setStatus = (s: MembershipStatus) => {
-    db.setUserStatus(user.id, s);
+  const setStatus = async (s: MembershipStatus) => {
+    await db.setUserStatus(user.id, s);
     toast(t('admin:users.status_changed'), 'success');
     refresh();
   };
-  const changePlan = (planId: PlanId) => {
-    db.updateUser(user.id, { plan: planId });
+  const changePlan = async (planId: PlanId) => {
+    await db.updateUser(user.id, { plan: planId });
     toast(t('admin:users.plan_changed'), 'success');
     refresh();
   };
-  const remove = () => {
-    db.deleteUser(user.id);
+  const remove = async () => {
+    await db.deleteUser(user.id);
     toast(t('admin:users.deleted'), 'info');
     onClose();
     onChanged();
@@ -384,8 +389,8 @@ function PaymentsSection() {
   const [reasonError, setReasonError] = useState('');
   const reload = () => setVersion((v) => v + 1);
 
-  const payments = useMemo(() => db.listPayments(), [version]);
-  const users = useMemo(() => db.listUsers(), [version]);
+  const payments = useAsync(() => db.listPayments(), [version], [] as Payment[]);
+  const users = useAsync(() => db.listUsers(), [version], [] as User[]);
   const nameOf = (id: string) => users.find((u) => u.id === id)?.full_name ?? id;
 
   const approved = payments.filter((p) => p.status === 'approved');
@@ -404,17 +409,17 @@ function PaymentsSection() {
 
   const filtered = payments.filter((p) => statusFilter === 'all' || p.status === statusFilter).sort((a, b) => b.created_at - a.created_at);
 
-  const approve = (id: string) => {
-    db.approvePayment(id);
+  const approve = async (id: string) => {
+    await db.approvePayment(id);
     toast(t('admin:users.approved'), 'success');
     reload();
   };
-  const doReject = () => {
+  const doReject = async () => {
     if (!reason.trim()) {
       setReasonError(t('admin:users.reject_reason_required'));
       return;
     }
-    if (rejectId) db.rejectPayment(rejectId, reason);
+    if (rejectId) await db.rejectPayment(rejectId, reason);
     setRejectId(null);
     setReason('');
     setReasonError('');
@@ -535,8 +540,8 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent?: 
 
 function AnalyticsSection() {
   const { t } = useTranslation(['admin', 'member', 'common']);
-  const users = useMemo(() => db.listUsers().filter((u) => !u.is_admin), []);
-  const payments = useMemo(() => db.listPayments(), []);
+  const users = useAsync(() => db.listUsers().then((list) => list.filter((u) => !u.is_admin)), [], [] as User[]);
+  const payments = useAsync(() => db.listPayments(), [], [] as Payment[]);
 
   const now = Date.now();
   const startToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
@@ -644,12 +649,13 @@ function ReportsSection() {
   const [rows, setRows] = useState<Record<string, string | number>[]>([]);
   const [generated, setGenerated] = useState(false);
 
-  const generate = () => {
+  const generate = async () => {
     const start = from ? new Date(from).getTime() : 0;
     const end = to ? new Date(to).getTime() + DAY : Date.now() + DAY;
     if (type === 'users') {
+      const users = await db.listUsers();
       setRows(
-        db.listUsers()
+        users
           .filter((u) => u.created_at >= start && u.created_at < end)
           .map((u) => ({
             name: u.full_name, email: u.email, phone: u.phone, user_id: u.user_code ?? '',
@@ -658,8 +664,9 @@ function ReportsSection() {
           }))
       );
     } else if (type === 'payments') {
+      const payments = await db.listPayments();
       setRows(
-        db.listPayments()
+        payments
           .filter((p) => p.created_at >= start && p.created_at < end)
           .map((p) => ({
             plan: p.plan, amount: p.amount, method: p.method, reference: p.reference,
@@ -667,8 +674,9 @@ function ReportsSection() {
           }))
       );
     } else {
+      const payments = await db.listPayments();
       setRows(
-        db.listPayments()
+        payments
           .filter((p) => p.status === 'approved' && (p.decided_at ?? 0) >= start && (p.decided_at ?? 0) < end)
           .map((p) => ({
             plan: p.plan, amount: p.amount, method: p.method,
@@ -755,16 +763,16 @@ function NotificationsSection() {
   const [body, setBody] = useState('');
   const [errors, setErrors] = useState<{ subject?: string; body?: string }>({});
 
-  const users = useMemo(() => db.listUsers().filter((u) => !u.is_admin), [version]);
-  const notes = useMemo(() => db.listNotifications(), [version]);
+  const users = useAsync(() => db.listUsers().then((list) => list.filter((u) => !u.is_admin)), [version], [] as User[]);
+  const notes = useAsync(() => db.listNotifications(), [version], [] as Broadcast[]);
 
-  const send = () => {
+  const send = async () => {
     const next: { subject?: string; body?: string } = {};
     if (!subject.trim()) next.subject = t('admin:notifications.subject_required');
     if (!body.trim()) next.body = t('admin:notifications.message_required');
     setErrors(next);
     if (next.subject || next.body) return;
-    db.addNotification({
+    await db.addNotification({
       audience: audience === 'all' ? 'all' : userId || 'all',
       type,
       title: subject.trim(),
@@ -847,7 +855,7 @@ function NotificationsSection() {
 function LogsSection() {
   const { t } = useTranslation(['admin', 'common']);
   const [version, setVersion] = useState(0);
-  const logs = useMemo(() => db.listLogs(), [version]);
+  const logs = useAsync(() => db.listLogs(), [version], [] as ActivityLog[]);
   const dateFmt = new Intl.DateTimeFormat('en', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
@@ -855,7 +863,7 @@ function LogsSection() {
       <div className="mb-4 flex items-center justify-between gap-2">
         <h2 className="font-heading text-lg font-semibold">{t('admin:logs.title')}</h2>
         <Button size="sm" variant="danger" icon={<TrashIcon size={14} />}
-          onClick={() => { db.clearLogs(); setVersion((v) => v + 1); toast(t('admin:logs.cleared'), 'info'); }}>
+          onClick={async () => { await db.clearLogs(); setVersion((v) => v + 1); toast(t('admin:logs.cleared'), 'info'); }}>
           {t('admin:logs.clear_all')}
         </Button>
       </div>
@@ -881,7 +889,7 @@ function LogsSection() {
                   <td className="py-2.5 pr-3 font-mono text-xs text-muted">{l.target}</td>
                   <td className="py-2.5 pr-3 text-xs text-muted">{dateFmt.format(l.created_at)}</td>
                   <td className="py-2.5">
-                    <button type="button" onClick={() => { db.deleteLog(l.id); setVersion((v) => v + 1); toast(t('admin:logs.deleted'), 'info'); }}
+                    <button type="button" onClick={async () => { await db.deleteLog(l.id); setVersion((v) => v + 1); toast(t('admin:logs.deleted'), 'info'); }}
                       className="text-muted transition-colors hover:text-danger" aria-label={t('admin:logs.delete')}>
                       <TrashIcon size={15} />
                     </button>
@@ -960,8 +968,8 @@ function ToggleRow({ label, hint, checked, onChange }: { label: string; hint?: s
 
 function BackupSection() {
   const { t } = useTranslation(['admin', 'common']);
-  const download = () => {
-    const snapshot = db.exportDatabase();
+  const download = async () => {
+    const snapshot = await db.exportDatabase();
     downloadJson(`zala-backup-${new Date().toISOString().slice(0, 10)}.json`, snapshot);
     toast(t('admin:backup.downloaded'), 'success');
   };

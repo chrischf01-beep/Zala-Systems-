@@ -6,9 +6,10 @@ import { CardIcon, CheckIcon, ShieldIcon } from '../components/svg/icons';
 import { useAuthStore } from '../stores/authStore';
 import { useSiteStore } from '../stores/siteStore';
 import { toast } from '../stores/toastStore';
+import { useAsync } from '../hooks/useAsync';
 import * as db from '../lib/db';
 import { PLANS, formatTsh, planById } from '../lib/plans';
-import type { PaymentMethod, PlanId } from '../lib/types';
+import type { Payment, PaymentMethod, PlanId } from '../lib/types';
 
 const METHODS: PaymentMethod[] = ['mpesa', 'airtel', 'halopesa'];
 const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
@@ -38,11 +39,16 @@ export function MembershipPage() {
   const [reference, setReference] = useState('');
   const [amount, setAmount] = useState<string>(() => String(planById(statePlan ?? user?.plan ?? 'daily')?.priceTsh ?? 0));
   const [screenshot, setScreenshot] = useState('');
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [submitting, setSubmitting] = useState(false);
   const [nonce, setNonce] = useState(0);
 
-  const payments = useMemo(() => (user ? db.listPaymentsForUser(user.id) : []), [user, nonce]);
+  const payments = useAsync(
+    () => (user ? db.listPaymentsForUser(user.id) : Promise.resolve([])),
+    [user, nonce],
+    [] as Payment[]
+  );
   const status = user ? db.effectiveStatus(user) : 'pending';
   const active = status === 'active';
 
@@ -53,7 +59,7 @@ export function MembershipPage() {
   const daysLeft =
     user?.member_expiry != null ? Math.max(0, Math.ceil((user.member_expiry - Date.now()) / 86400000)) : 0;
 
-  const submit = () => {
+  const submit = async () => {
     if (!user) return;
     const next: Record<string, string | undefined> = {};
     const parsedAmount = Number(amount);
@@ -68,24 +74,29 @@ export function MembershipPage() {
     if (Object.values(next).some(Boolean)) return;
 
     setSubmitting(true);
-    db.addPayment({
-      user_id: user.id,
-      plan,
-      amount: parsedAmount,
-      method,
-      phone: phone.trim(),
-      sender_name: senderName.trim(),
-      reference: reference.trim(),
-      screenshot,
-      created_at: Date.now(),
-    });
-    setReference('');
-    setScreenshot('');
-    setAmount(String(planById(plan)?.priceTsh ?? 0));
-    setSubmitting(false);
-    setNonce((n) => n + 1);
-    refreshUser();
-    toast(t('member:submitted'), 'success');
+    try {
+      await db.addPayment(
+        {
+          user_id: user.id,
+          plan,
+          amount: parsedAmount,
+          method,
+          phone: phone.trim(),
+          sender_name: senderName.trim(),
+          reference: reference.trim(),
+        },
+        screenshotFile
+      );
+      setReference('');
+      setScreenshot('');
+      setScreenshotFile(null);
+      setAmount(String(planById(plan)?.priceTsh ?? 0));
+      setNonce((n) => n + 1);
+      await refreshUser();
+      toast(t('member:submitted'), 'success');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!user) return null;
@@ -201,22 +212,26 @@ export function MembershipPage() {
                   const file = e.target.files?.[0];
                   if (!file) {
                     setScreenshot('');
+                    setScreenshotFile(null);
                     return;
                   }
                   if (!ACCEPTED_TYPES.includes(file.type)) {
                     setScreenshot('');
+                    setScreenshotFile(null);
                     setErrors((prev) => ({ ...prev, screenshot: t('member:errors.screenshot_type') }));
                     e.target.value = '';
                     return;
                   }
                   if (file.size > MAX_SIZE) {
                     setScreenshot('');
+                    setScreenshotFile(null);
                     setErrors((prev) => ({ ...prev, screenshot: t('member:errors.screenshot_size') }));
                     e.target.value = '';
                     return;
                   }
                   setErrors((prev) => ({ ...prev, screenshot: undefined }));
                   setScreenshot(file.name);
+                  setScreenshotFile(file);
                 }}
                 className="w-full rounded-xl border border-border bg-surface/70 px-3.5 py-2 text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary/15 file:px-3 file:py-1.5 file:text-primary"
               />
