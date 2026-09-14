@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Dropdown, Modal, Toggle } from '../components/ui';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useAuthStore } from '../stores/authStore';
 import { toast } from '../stores/toastStore';
+import { useAsync } from '../hooks/useAsync';
 import * as db from '../lib/db';
 import { PLANS, formatTsh, planById } from '../lib/plans';
 import { CardIcon, CheckIcon, CopyIcon, PredictIcon } from '../components/svg/icons';
@@ -29,7 +30,11 @@ export function MyAccountPage() {
   const dateFmt = new Intl.DateTimeFormat(i18n.language, { day: '2-digit', month: 'short', year: 'numeric' });
   const expiryLabel = user?.member_expiry != null ? dateFmt.format(user.member_expiry) : '--';
 
-  const payments = useMemo<Payment[]>(() => (user ? db.listPaymentsForUser(user.id) : []), [user]);
+  const payments = useAsync(
+    () => (user ? db.listPaymentsForUser(user.id) : Promise.resolve([])),
+    [user],
+    [] as Payment[]
+  );
 
   const progress = (() => {
     const start = user?.member_start;
