@@ -1,0 +1,11 @@
+services:
+  - type: static_site
+    name: zala-predictor
+    buildCommand: cd zala-predictor && npm install && npm run build
+    staticPublishPath: zala-predictor/dist
+    envVars:
+      - key: NODE_ENV
+        value: production
+    routes:
+      - path: /*
+        destination: /index.html
