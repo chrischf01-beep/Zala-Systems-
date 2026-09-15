@@ -6,3 +6,11 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Render Deployment Configuration
+[env.render]
+  NODE_ENV = "production"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
